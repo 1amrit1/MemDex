@@ -1,0 +1,17 @@
+# MemDex sources config. Copy to memdex.yaml (git-ignored) and edit the paths.
+# Relative paths resolve against this file's folder.
+# Scalar settings (index_dir, model_dir, max_chars) belong in .env - see .env.example.
+# They may also be set here as a fallback; .env / environment variables win.
+
+sources:
+  - path: C:\Users\you\Documents\notes
+    types: [md]          # later: txt, pdf, xlsx, docx
+    include: ["**"]
+    exclude: [".claude/**", "_BACKUPS/**"]
+    collections:         # first match wins; no match -> references
+      - { match: "CLAUDE.md",          collection: rules }
+      - { match: "Claude_Rules/**",    collection: rules }
+      - { match: "STATUS*.MD",         collection: status }
+      - { match: "**/ARCHIVED/**",     collection: archive }
+      - { match: "PROJECTS/**",        collection: projects }
+      - { match: "**",                 collection: references }

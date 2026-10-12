@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memdex"
+version = "0.1.0"
+description = "Local, offline index over your docs (and later code): search and rules retrieval for Claude Code and local agents."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "chromadb==1.5.9",  # pinned: memdex/embedder.py relies on this version's ONNX class internals
+    "pyyaml>=6.0",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+memdex = "memdex.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["memdex*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

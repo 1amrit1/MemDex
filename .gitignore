@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# local data - never committed
+.index/
+models/
+memdex.yaml
+.env

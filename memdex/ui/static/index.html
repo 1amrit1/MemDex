@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MemDex</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1b1f24;--mut:#6b7280;--line:#e3e6ea;--acc:#2563eb;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--chip:#eef2ff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--ink:#e6e8eb;--mut:#9aa3af;--line:#2a2f3a;--acc:#60a5fa;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;--chip:#1f2a44}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 system-ui,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;align-items:center;gap:14px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2}
+header h1{font-size:16px;margin:0 8px 0 0}
+nav{display:flex;flex-wrap:wrap}
+nav button{background:none;border:0;padding:8px 10px;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;font:inherit}
+nav button.on{color:var(--ink);border-color:var(--acc)}
+#status{margin-left:auto;color:var(--mut);font-size:12px}
+main{max-width:1120px;margin:0 auto;padding:16px}
+section{display:none} section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px}
+.card h2{font-size:14px;margin:0 0 10px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+input,select,button,textarea{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+input[type=text]{flex:1;min-width:220px}
+button{cursor:pointer} button.pri{background:var(--acc);color:#fff;border-color:var(--acc)} button:disabled{opacity:.5;cursor:default}
+label.chk{display:inline-flex;align-items:center;gap:4px;color:var(--mut)}
+.hit{border-top:1px solid var(--line);padding:10px 0} .hit:first-of-type{border-top:0}
+.hit h3{margin:0 0 2px;font-size:14px}
+.meta{color:var(--mut);font-size:12px}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:8px 10px;border-radius:6px;margin:6px 0;font-size:12.5px;max-height:280px;overflow:auto}
+table{border-collapse:collapse;width:100%} th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px} th{color:var(--mut);font-weight:600}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.kv div{background:var(--bg);border-radius:6px;padding:8px 10px;overflow-wrap:anywhere}
+.kv b{display:block;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+.ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+.msg{margin:8px 0;color:var(--mut)} .msg.bad{color:var(--bad)} .msg.ok{color:var(--ok)}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:1px 8px;font-size:12px;margin-right:4px}
+code{font-size:12.5px}
+.small{font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>MemDex</h1>
+  <nav id="nav"></nav>
+  <span id="status">…</span>
+</header>
+<main>
+
+<!-- ============================ SEARCH ============================ -->
+<section id="tab-search">
+  <div class="card">
+    <form id="search-form" class="row" onsubmit="return false">
+      <input type="text" id="q" placeholder="Ask your docs… (e.g. what must happen before any write step)" autofocus>
+      <select id="s-collection"><option value="">all collections</option></select>
+      <select id="s-project"><option value="">all projects</option></select>
+      <select id="s-k"><option>5</option><option>10</option><option>20</option></select>
+      <label class="chk"><input type="checkbox" id="s-superseded"> include superseded</label>
+      <button class="pri" id="s-go">Search</button>
+      <button id="s-copy" disabled title="Copy all results as a Markdown block to paste into Claude">Copy as context</button>
+      <button id="s-dl" disabled title="Save the same Markdown as a .md file to attach to a conversation">Download as file</button>
+    </form>
+    <div id="s-msg" class="msg">Default tab. Results show the file, heading path, line range and score of each chunk.</div>
+    <div id="s-results"></div>
+  </div>
+</section>
+
+<!-- ============================ UPLOAD ============================ -->
+<section id="tab-upload">
+  <div class="card">
+    <h2>1 · Project</h2>
+    <div class="row">
+      <select id="u-project"><option value="">— pick a project —</option></select>
+      <span class="small">or create:</span>
+      <input type="text" id="u-newproject" placeholder="new project name" style="max-width:260px">
+      <button id="u-mkproject">Create project</button>
+    </div>
+    <div id="u-pmsg" class="msg small">Each project is a folder under <code id="u-sources-dir">data/sources</code>; its files are tagged <span class="chip">project</span> so searches can be limited to it.</div>
+  </div>
+  <div class="card">
+    <h2>2 · Folder (optional)</h2>
+    <div class="row">
+      <select id="u-folder"><option value="">(project root)</option></select>
+      <span class="small">or create:</span>
+      <input type="text" id="u-newfolder" placeholder="new folder, nested with / (e.g. notes/2026)" style="max-width:300px">
+      <button id="u-mkfolder">Create folder</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>3 · Files</h2>
+    <div class="row">
+      <input type="file" id="u-files" multiple accept=".md,.txt,.MD,.TXT">
+      <label class="chk"><input type="checkbox" id="u-reindex" checked> re-index after upload</label>
+      <button class="pri" id="u-go">Upload</button>
+    </div>
+    <div class="small">Accepted today: <b>.md</b> and <b>.txt</b> (max 10 MB each). PDF, Word and Excel arrive in Milestone 7. Re-index rebuilds the whole index (incremental re-index is Milestone 3).</div>
+    <div id="u-msg" class="msg"></div>
+    <div id="u-results"></div>
+  </div>
+</section>
+
+<!-- ============================ HEALTH ============================ -->
+<section id="tab-health">
+  <div class="card"><h2>Connection</h2><div class="kv" id="h-conn"></div></div>
+  <div class="card"><h2>Index</h2><div class="kv" id="h-index"></div>
+    <div id="h-reingest" class="msg warn" style="display:none"></div>
+    <div class="row" style="margin-top:8px"><b class="small">By collection:</b><span id="h-bycoll"></span></div>
+    <div class="row"><b class="small">By project:</b><span id="h-byproj"></span></div>
+  </div>
+  <div class="card"><h2>Sources</h2><table><thead><tr><th>Name (project)</th><th>Kind</th><th>Path</th><th>Types</th><th>Default collection</th><th>Exists</th></tr></thead><tbody id="h-sources"></tbody></table></div>
+  <div class="card"><h2>Connect Claude Code to MemDex</h2>
+    <p class="small" id="h-setup-note"></p>
+    <p><b>Option A — a line in your CLAUDE.md</b> (Claude Code calls the CLI through its shell; works today):</p>
+    <div class="row"><button data-copy="h-claude-md">Copy</button></div><pre id="h-claude-md"></pre>
+    <p><b>Option B — a hook that injects matching rules on every prompt</b> (Milestone 4 finishes the `--hook` flag; the config shape is final):</p>
+    <p class="small" id="h-hook-where"></p>
+    <div class="row"><button data-copy="h-hook-json">Copy</button></div><pre id="h-hook-json"></pre>
+    <p><b>Option C — MCP server</b> for Claude Code and Claude Desktop: <span id="h-mcp" class="small"></span></p>
+    <p class="small" id="h-settings-button"></p>
+  </div>
+</section>
+
+<!-- ============================ QUERY LOG ============================ -->
+<section id="tab-log">
+  <div class="card">
+    <div class="row">
+      <select id="l-n"><option>5</option><option>20</option><option>100</option><option>500</option></select>
+      <select id="l-caller"><option value="">all callers</option></select>
+      <input type="text" id="l-q" placeholder="filter by query text" style="max-width:300px">
+      <button class="pri" id="l-go">Refresh</button>
+      <span id="l-total" class="small"></span>
+    </div>
+    <div class="small">Every <code>search</code>/<code>rules</code> call is logged with who asked: <span class="chip">cli</span><span class="chip">hook</span><span class="chip">mcp</span><span class="chip">ui</span><span class="chip">eval</span>. This is how you see Claude Code pulling from the index.</div>
+    <table><thead><tr><th>When</th><th>Caller</th><th>Query</th><th>Filters</th><th>ms</th><th>Top hits</th></tr></thead><tbody id="l-rows"></tbody></table>
+  </div>
+</section>
+
+<!-- ============================ EVAL ============================ -->
+<section id="tab-eval">
+  <div class="card">
+    <div class="row">
+      <button class="pri" id="e-run">Run eval</button>
+      <span id="e-summary" class="small"></span>
+    </div>
+    <div class="small" id="e-file"></div>
+    <div id="e-msg" class="msg"></div>
+    <table><thead><tr><th>#</th><th>Question</th><th>Expected</th><th>Hit</th><th>Rank</th><th>Top 3</th></tr></thead><tbody id="e-rows"></tbody></table>
+  </div>
+</section>
+
+<!-- ============================ INGEST ============================ -->
+<section id="tab-ingest">
+  <div class="card">
+    <div class="row">
+      <button class="pri" id="i-run">Run ingest (rebuild index)</button>
+      <span id="i-state" class="small"></span>
+    </div>
+    <div class="small">Reads every configured source and every project, chunks, embeds locally and rewrites the index. Searches during a rebuild may return partial results.</div>
+    <div id="i-msg" class="msg"></div>
+    <pre id="i-report" style="display:none"></pre>
+  </div>
+</section>
+
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const TABS = [["search","Search"],["upload","Upload"],["health","Health / connection"],["log","Query log"],["eval","Eval"],["ingest","Ingest"]];
+let health = null, lastContext = "", lastQuery = "";
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = {error: r.statusText}; }
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+function show(tab) {
+  TABS.forEach(([t]) => { $("tab-"+t).classList.toggle("on", t===tab); });
+  [...$("nav").children].forEach((b) => b.classList.toggle("on", b.dataset.tab===tab));
+  try { localStorage.setItem("memdex.tab", tab); } catch (e) {}
+  ({search: loadSearchFilters, upload: loadProjects, health: loadHealth, log: loadLog, eval: loadEval, ingest: loadIngest})[tab]?.();
+}
+TABS.forEach(([t, label]) => { const b = document.createElement("button"); b.textContent = label; b.dataset.tab = t; b.onclick = () => show(t); $("nav").appendChild(b); });
+
+/* ---------------- search ---------------- */
+async function loadSearchFilters() {
+  try {
+    const h = await api("/api/health"); health = h;
+    fill($("s-collection"), Object.keys(h.by_collection || {}), "all collections");
+    fill($("s-project"), Object.keys(h.by_project || {}).filter(Boolean), "all projects");
+    $("status").textContent = h.chunks ? `${h.files} files · ${h.chunks} chunks · ${h.model_present ? "model ok" : "MODEL MISSING"}` : "index empty — upload or ingest";
+  } catch (e) { $("status").textContent = "health: " + e.message; }
+}
+function fill(sel, values, blank) {
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${esc(blank)}</option>` + values.map((v) => `<option>${esc(v)}</option>`).join("");
+  sel.value = values.includes(cur) ? cur : "";
+}
+async function doSearch() {
+  const q = $("q").value.trim(); if (!q) return;
+  const p = new URLSearchParams({q, k: $("s-k").value, collection: $("s-collection").value, project: $("s-project").value, superseded: $("s-superseded").checked ? "1" : "0"});
+  $("s-msg").textContent = "searching…"; $("s-msg").className = "msg";
+  try {
+    const r = await api("/api/search?" + p);
+    lastContext = r.context; $("s-copy").disabled = $("s-dl").disabled = !r.hits.length; lastQuery = r.query;
+    $("s-msg").textContent = `${r.hits.length} result(s) in ${r.ms} ms`;
+    $("s-results").innerHTML = r.hits.map((h, i) => `
+      <div class="hit">
+        <h3>${i+1}. ${esc(h.rel_path)} <span class="meta">— ${esc(h.heading_path)}</span></h3>
+        <div class="meta">score ${h.score.toFixed(3)} · lines ${h.start_line}–${h.end_line} · <span class="chip">${esc(h.collection)}</span>${h.project ? `<span class="chip">${esc(h.project)}</span>` : ""}${h.superseded ? ' <span class="chip bad">SUPERSEDED</span>' : ""}${h.doc_date ? ` · ${esc(h.doc_date)}` : ""}</div>
+        <pre>${esc(h.text)}</pre>
+        <div class="meta">${esc(h.path)}</div>
+      </div>`).join("") || "<div class='msg'>No chunks matched. Try fewer filters.</div>";
+  } catch (e) { $("s-msg").textContent = e.message; $("s-msg").className = "msg bad"; $("s-results").innerHTML = ""; }
+}
+$("s-go").onclick = doSearch; $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+$("s-copy").onclick = async () => { await navigator.clipboard.writeText(lastContext); $("s-msg").textContent = "copied — paste into Claude as context"; };
+
+/* ---------------- upload ---------------- */
+let projects = [];
+async function loadProjects(keep) {
+  try {
+    const r = await api("/api/projects"); projects = r.projects;
+    const sel = $("u-project"), cur = keep || sel.value;
+    sel.innerHTML = `<option value="">— pick a project —</option>` + projects.map((p) => `<option value="${esc(p.name)}">${esc(p.name)} (${p.files} files)</option>`).join("");
+    sel.value = projects.some((p) => p.name === cur) ? cur : "";
+    loadFolders();
+    if (health) $("u-sources-dir").textContent = health.data_dir + "\\sources";
+  } catch (e) { $("u-pmsg").textContent = e.message; $("u-pmsg").className = "msg bad"; }
+}
+function loadFolders(keep) {
+  const p = projects.find((x) => x.name === $("u-project").value);
+  const sel = $("u-folder"), cur = keep || sel.value;
+  sel.innerHTML = `<option value="">(project root)</option>` + (p ? p.folders.map((f) => `<option>${esc(f)}</option>`).join("") : "");
+  sel.value = p && p.folders.includes(cur) ? cur : "";
+}
+$("u-project").onchange = () => loadFolders();
+$("u-mkproject").onclick = async () => {
+  const name = $("u-newproject").value.trim(); if (!name) return;
+  try { const r = await api("/api/projects", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name})});
+    $("u-pmsg").textContent = (r.created ? "created " : "already existed: ") + r.path; $("u-pmsg").className = "msg ok"; $("u-newproject").value = ""; await loadProjects(r.name);
+  } catch (e) { $("u-pmsg").textContent = e.message; $("u-pmsg").className = "msg bad"; }
+};
+$("u-mkfolder").onclick = async () => {
+  const project = $("u-project").value, folder = $("u-newfolder").value.trim();
+  if (!project) { $("u-msg").textContent = "pick a project first"; $("u-msg").className = "msg bad"; return; }
+  if (!folder) return;
+  try { const r = await api("/api/projects/folders", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({project, folder})});
+    $("u-msg").textContent = (r.created ? "created " : "already existed: ") + r.path; $("u-msg").className = "msg ok"; $("u-newfolder").value = ""; await loadProjects(project); loadFolders(folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, ""));
+  } catch (e) { $("u-msg").textContent = e.message; $("u-msg").className = "msg bad"; }
+};
+$("u-go").onclick = async () => {
+  const project = $("u-project").value, files = $("u-files").files;
+  if (!project) { $("u-msg").textContent = "pick or create a project first"; $("u-msg").className = "msg bad"; return; }
+  if (!files.length) { $("u-msg").textContent = "choose at least one .md or .txt file"; $("u-msg").className = "msg bad"; return; }
+  const fd = new FormData(); fd.append("project", project); fd.append("folder", $("u-folder").value); fd.append("reindex", $("u-reindex").checked ? "true" : "false");
+  [...files].forEach((f) => fd.append("files", f, f.name));
+  $("u-msg").textContent = "uploading…"; $("u-msg").className = "msg"; $("u-go").disabled = true;
+  try {
+    const r = await api("/api/upload", {method: "POST", body: fd});
+    $("u-results").innerHTML = r.saved.map((s) => `<div class="hit"><b>${esc(s.rel_path)}</b> <span class="meta">${s.bytes} bytes${s.replaced ? " · replaced existing" : ""}</span></div>`).join("")
+      + r.errors.map((e) => `<div class="hit bad"><b>${esc(e.name)}</b> — ${esc(e.error)}</div>`).join("");
+    $("u-msg").textContent = `${r.saved.length} saved, ${r.errors.length} rejected` + (r.reindex_started ? " · re-index started (see Ingest tab)" : "");
+    $("u-msg").className = r.errors.length ? "msg warn" : "msg ok";
+    $("u-files").value = ""; await loadProjects(project);
+    if (r.reindex_started) pollIngest(() => { $("u-msg").textContent += " · index rebuilt"; loadSearchFilters(); });
+  } catch (e) { $("u-msg").textContent = e.message; $("u-msg").className = "msg bad"; }
+  finally { $("u-go").disabled = false; }
+};
+
+/* ASOH wants the context as a file to attach in the Claude app. Windows-safe name: a-z 0-9 and "-" only, so
+   \ / : * ? " < > | and reserved names (CON, NUL...) cannot occur; the "memdex-" prefix also rules those out. */
+function contextFilename(q, d = new Date()) {
+  const slug = q.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50).replace(/-+$/, "") || "search";
+  const p = (n) => String(n).padStart(2, "0");
+  return `memdex-${slug}-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.md`;
+}
+$("s-dl").onclick = () => {
+  const name = contextFilename(lastQuery);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lastContext], {type: "text/markdown;charset=utf-8"}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  $("s-msg").textContent = "saved " + name + " — attach it to a conversation";
+};
+
+/* ---------------- health ---------------- */
+function kv(el, pairs) { el.innerHTML = pairs.map(([k, v, cls]) => `<div><b>${esc(k)}</b><span class="${cls || ""}">${v}</span></div>`).join(""); }
+const yes = (b, good = "yes", bad = "no") => b ? `<span class="ok">${good}</span>` : `<span class="bad">${bad}</span>`;
+async function loadHealth() {
+  try {
+    const h = await api("/api/health"); health = h;
+    kv($("h-conn"), [
+      ["UI server", `http://${esc(h.server.host)}:${h.server.port}/ · MemDex ${esc(h.version)}`],
+      ["Offline guard", yes(h.offline_guard, "on (loopback only)", "OFF")],
+      ["Config file", esc(h.config_path || "none — defaults + UI projects")],
+      ["Data folder (projects, logs, eval)", esc(h.data_dir)],
+      ["Embedding model present", yes(h.model_present, "yes", "missing — run memdex fetch-model")],
+      ["Query log entries", h.log_entries],
+      ...(h.env_overrides && h.env_overrides.warning ? [["Warning", esc(h.env_overrides.warning) + ` <span class="small">(${Object.keys(h.env_overrides.settings).map(esc).join(", ")})</span>`, "warn"]] : []),
+    ]);
+    kv($("h-index"), [
+      ["Index folder", esc(h.index_dir)],
+      ["Index opens", h.index_open ? yes(true) : `<span class="bad">${esc(h.index_error || "no")}</span>`],
+      ["Files / chunks", `${h.files} / ${h.chunks}` + (h.superseded_files ? ` <span class="small">(${h.superseded_files} superseded files)</span>` : "")],
+      ["Chunk size (max_chars)", h.max_chars],
+      ["Size on disk", `${h.index_size_mb} MB`],
+      ["HNSW folders live / orphan", h.segments.known ? `${h.segments.live.length} / <span class="${h.segments.orphan.length ? "warn" : ""}">${h.segments.orphan.length}</span>` + (h.segments.orphan.length ? ` <span class="small">(${(h.segments.orphan_bytes/1048576).toFixed(1)} MB left by rebuilds — cleanup in M3)</span>` : "") : "unknown"],
+      ["Last ingest", h.last_ingest ? `${esc(h.last_ingest.finished_at)} · ${h.last_ingest.files} files · ${h.last_ingest.chunks} chunks · ${h.last_ingest.seconds}s` : "no record yet"],
+      ["Ingest running now", yes(!h.ingest.running, "no", "YES")],
+    ]);
+    $("h-reingest").style.display = h.needs_reingest ? "block" : "none";
+    $("h-reingest").textContent = h.needs_reingest ? `${h.chunks_without_project} chunks have no project tag (index built before projects existed) — run an ingest to refresh.` : "";
+    $("h-bycoll").innerHTML = Object.entries(h.by_collection).map(([k, v]) => `<span class="chip">${esc(k)} ${v}</span>`).join("") || "<span class='small'>—</span>";
+    $("h-byproj").innerHTML = Object.entries(h.by_project).map(([k, v]) => `<span class="chip">${esc(k || "(none)")} ${v}</span>`).join("") || "<span class='small'>—</span>";
+    $("h-sources").innerHTML = h.sources.map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.kind)}</td><td class="small">${esc(s.path)}</td><td>${s.types.join(", ")}</td><td>${esc(s.default_collection)}</td><td>${yes(s.exists)}</td></tr>`).join("") || "<tr><td colspan=6 class='small'>no sources — create a project in Upload or add folders to memdex.yaml</td></tr>";
+    const st = h.setup;
+    $("h-setup-note").textContent = `Binary: ${st.memdex_exe} · config: ${st.config}`;
+    $("h-claude-md").textContent = st.claude_md; $("h-hook-json").textContent = st.hook_json; $("h-hook-where").textContent = st.hook_where;
+    $("h-mcp").textContent = st.mcp; $("h-settings-button").textContent = st.settings_button;
+    document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => { await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1200); });
+  } catch (e) { kv($("h-conn"), [["Error", esc(e.message), "bad"]]); }
+}
+
+/* ---------------- query log ---------------- */
+async function loadLog() {
+  try {
+    const p = new URLSearchParams({n: $("l-n").value, caller: $("l-caller").value, q: $("l-q").value});
+    const r = await api("/api/log?" + p);
+    if ($("l-caller").options.length === 1) r.callers.forEach((c) => { const o = document.createElement("option"); o.textContent = c; $("l-caller").appendChild(o); });
+    $("l-total").textContent = `${r.entries.length} shown of ${r.total} logged`;
+    $("l-rows").innerHTML = r.entries.map((e) => `<tr><td class="small">${esc(e.ts.replace("T", " ").slice(0, 19))}</td><td><span class="chip">${esc(e.caller)}</span></td><td>${esc(e.query)}</td><td class="small">${esc(Object.entries(e.filters || {}).map(([k, v]) => `${k}=${v}`).join(" "))}</td><td>${e.ms}</td><td class="small">${e.hits.map((h) => `${h.score.toFixed(2)} ${esc(h.rel_path)} › ${esc(h.heading_path.split(" > ").pop())}`).join("<br>") || "—"}</td></tr>`).join("") || "<tr><td colspan=6 class='small'>no queries logged yet</td></tr>";
+  } catch (e) { $("l-rows").innerHTML = `<tr><td colspan=6 class="bad">${esc(e.message)}</td></tr>`; }
+}
+$("l-go").onclick = loadLog; $("l-n").onchange = loadLog; $("l-caller").onchange = loadLog; $("l-q").addEventListener("keydown", (e) => { if (e.key === "Enter") loadLog(); });
+
+/* ---------------- eval ---------------- */
+function renderEval(res) {
+  if (!res) { $("e-summary").textContent = "no eval run yet"; $("e-rows").innerHTML = ""; return; }
+  $("e-summary").innerHTML = `recall@${res.k} = <b>${(res.recall_at_k*100).toFixed(0)}%</b> (${res.hits}/${res.n}) · MRR ${res.mrr.toFixed(2)} · ran ${esc(res.ran_at)}`;
+  $("e-rows").innerHTML = res.rows.map((r, i) => `<tr><td>${i+1}</td><td>${esc(r.q)}${r.collection ? ` <span class="chip">${esc(r.collection)}</span>` : ""}${r.project ? ` <span class="chip">${esc(r.project)}</span>` : ""}</td><td class="small">${r.expect.map(esc).join("<br>")}</td><td>${r.hit ? '<span class="ok">HIT</span>' : '<span class="bad">miss</span>'}</td><td>${r.rank ?? "—"}</td><td class="small">${r.top.map((t) => `${t.score.toFixed(2)} ${esc(t.rel_path)} › ${esc(t.heading_path.split(" > ").pop())}`).join("<br>")}</td></tr>`).join("");
+}
+async function loadEval() {
+  try { const r = await api("/api/eval"); $("e-file").innerHTML = `Questions file: <code>${esc(r.questions_file)}</code> ${r.questions_exists ? '<span class="ok">found</span>' : '<span class="bad">missing — copy eval.example.yaml there and edit</span>'}`; renderEval(r.result); }
+  catch (e) { $("e-msg").textContent = e.message; $("e-msg").className = "msg bad"; }
+}
+$("e-run").onclick = async () => {
+  $("e-msg").textContent = "running…"; $("e-msg").className = "msg"; $("e-run").disabled = true;
+  try { const r = await api("/api/eval/run", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}); renderEval(r.result); $("e-msg").textContent = "saved to data/eval/last_result.json"; $("e-msg").className = "msg ok"; }
+  catch (e) { $("e-msg").textContent = e.message; $("e-msg").className = "msg bad"; }
+  finally { $("e-run").disabled = false; }
+};
+
+/* ---------------- ingest ---------------- */
+function renderIngest(s) {
+  $("i-state").textContent = s.running ? `running since ${s.started}…` : (s.finished ? `last run finished ${s.finished}` : "idle");
+  $("i-run").disabled = !!s.running;
+  if (s.error) { $("i-msg").textContent = s.error; $("i-msg").className = "msg bad"; }
+  if (s.report) { $("i-report").style.display = "block"; $("i-report").textContent = JSON.stringify(s.report, null, 2); }
+}
+async function loadIngest() { try { renderIngest(await api("/api/ingest/status")); } catch (e) { $("i-msg").textContent = e.message; } }
+function pollIngest(done) {
+  const t = setInterval(async () => { try { const s = await api("/api/ingest/status"); renderIngest(s); if (!s.running) { clearInterval(t); done && done(s); } } catch (e) { clearInterval(t); } }, 1500);
+}
+$("i-run").onclick = async () => {
+  $("i-msg").textContent = ""; $("i-report").style.display = "none";
+  try { const r = await api("/api/ingest", {method: "POST"}); renderIngest(r.status); pollIngest(() => { loadSearchFilters(); $("i-msg").textContent = "done"; $("i-msg").className = "msg ok"; }); }
+  catch (e) { $("i-msg").textContent = e.message; $("i-msg").className = "msg bad"; }
+};
+
+/* ---------------- boot ---------------- */
+let start = "search";
+try { start = localStorage.getItem("memdex.tab") || "search"; } catch (e) {}
+show(TABS.some(([t]) => t === start) ? start : "search");
+loadSearchFilters();
+</script>
+</body>
+</html>

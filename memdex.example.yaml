@@ -1,10 +1,14 @@
 # MemDex sources config. Copy to memdex.yaml (git-ignored) and edit the paths.
 # Relative paths resolve against this file's folder.
-# Scalar settings (index_dir, model_dir, max_chars) belong in .env - see .env.example.
+# Scalar settings (index_dir, model_dir, data_dir, max_chars) belong in .env - see .env.example.
 # They may also be set here as a fallback; .env / environment variables win.
+#
+# This file is optional: projects created in the web UI (memdex ui -> Upload) live under
+# data/sources/<project>/ and are indexed without any entry here.
 
 sources:
   - path: C:\Users\you\Documents\notes
+    name: notes          # the "project" name shown in the UI and stored on every chunk (default: folder name)
     types: [md]          # later: txt, pdf, xlsx, docx
     include: ["**"]
     exclude: [".claude/**", "_BACKUPS/**"]

@@ -21,15 +21,21 @@ class ModelMissing(RuntimeError):
     pass
 
 
+def model_present(model_dir: Path) -> bool:
+    """True when every model file is on disk — checked without loading anything."""
+    folder = Path(model_dir) / MODEL_NAME / ONNXMiniLM_L6_V2.EXTRACTED_FOLDER_NAME
+    return all((folder / f).is_file() for f in _FILES)
+
+
 class Embedder:
     def __init__(self, model_dir: Path) -> None:
-        self.model_path = Path(model_dir) / MODEL_NAME
+        self.model_dir = Path(model_dir)
+        self.model_path = self.model_dir / MODEL_NAME
         runner = type("_LocalMiniLM", (ONNXMiniLM_L6_V2,), {"DOWNLOAD_PATH": self.model_path})
         self._onnx = runner()
 
     def is_present(self) -> bool:
-        folder = self.model_path / ONNXMiniLM_L6_V2.EXTRACTED_FOLDER_NAME
-        return all((folder / f).is_file() for f in _FILES)
+        return model_present(self.model_dir)
 
     def fetch(self) -> None:
         """Download + checksum-verify the model into model_dir. Needs the network; nothing else does."""

@@ -11,7 +11,12 @@ import re
 from dataclasses import dataclass
 
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
-FENCE = re.compile(r"^\s*(```|~~~)")
+# A fence line, split into indent + the whole run of backticks/tildes + the info string. Getting any part
+# of the CommonMark close rule wrong lets a fence end early, and every line of code after it is then read
+# as Markdown - which is how a shell comment becomes an H1 and silently re-roots every citation below it
+# (LIVE READ 2026-10-20: with a fixed 3-character marker, 16 chunks of ASOH's CLAUDE.md carried a heading
+# path rooted at "# 2. confirm - must print the project path"). `_opens` and `_closes` carry the rules.
+FENCE = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
 SECTION_LEVEL = 3  # H1-H3 start a new section; H4+ stay inside their parent section
 DATE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
 SUPERSEDED = re.compile(r"\bSUPERSEDED\b")
@@ -50,6 +55,31 @@ def is_superseded(text: str) -> bool:
     return any(SUPERSEDED.search(line) for line in text.splitlines()[:10])
 
 
+def _opens(line: str) -> tuple[str, str] | None:
+    """(indent, marker) when the line opens a fenced code block, else None."""
+    m = FENCE.match(line)
+    if not m:
+        return None
+    indent, marker, info = m.groups()
+    if marker[0] == "`" and "`" in info:
+        return None  # a backtick fence's info string may not contain a backtick, so this is not a fence
+    return indent, marker
+
+
+def _closes(line: str, indent: str, marker: str) -> bool:
+    """CommonMark's three conditions for closing the fence opened by (indent, marker)."""
+    m = FENCE.match(line)
+    if not m:
+        return False
+    c_indent, c_marker, c_info = m.groups()
+    return (
+        c_marker[0] == marker[0]  # same character ...
+        and len(c_marker) >= len(marker)  # ... repeated at least as many times ...
+        and not c_info.strip()  # ... with nothing after it (a closing fence carries no info string) ...
+        and len(c_indent) - len(indent) <= 3  # ... indented no more than 3 further than the opener
+    )
+
+
 def _blocks(lines: list[str]) -> list[tuple[int, str, _Block]]:
     """Group lines into (heading_level, heading_title, block); level 0 means a content block."""
     out: list[tuple[int, str, _Block]] = []
@@ -59,13 +89,19 @@ def _blocks(lines: list[str]) -> list[tuple[int, str, _Block]]:
         if not line.strip() or line.strip() == "---":
             i += 1
             continue
-        if FENCE.match(line):
-            marker = FENCE.match(line).group(1)
+        opened = _opens(line)
+        if opened:
+            indent, marker = opened
             j = i + 1
-            while j < n and not lines[j].lstrip().startswith(marker):
+            while j < n and not _closes(lines[j], indent, marker):
                 j += 1
             j = min(j, n - 1)
-            out.append((0, "", _Block(lines[i : j + 1], i + 1, j + 1)))
+            # A fence is the one block that may hold blank lines, so end_line is pulled back to the last
+            # line with content: the text is unchanged, the reported range just stops pointing at a blank.
+            end = j
+            while end > i and not lines[end].strip():
+                end -= 1
+            out.append((0, "", _Block(lines[i : j + 1], i + 1, end + 1)))
             i = j + 1
             continue
         h = HEADING.match(line)
@@ -78,7 +114,7 @@ def _blocks(lines: list[str]) -> list[tuple[int, str, _Block]]:
         j = i
         while j + 1 < n:
             nxt = lines[j + 1]
-            if not nxt.strip() or nxt.strip() == "---" or FENCE.match(nxt) or HEADING.match(nxt):
+            if not nxt.strip() or nxt.strip() == "---" or _opens(nxt) or HEADING.match(nxt):
                 break
             if nxt.lstrip().startswith("|") != is_table:
                 break
@@ -89,22 +125,36 @@ def _blocks(lines: list[str]) -> list[tuple[int, str, _Block]]:
 
 
 def _split_oversize(block: _Block, max_chars: int) -> list[_Block]:
-    """Last resort for a single block larger than max_chars: cut between lines, then inside a line."""
+    """Last resort for a single block larger than max_chars: cut between lines, then inside a line.
+
+    Only a fenced block reaches here with blank lines in it, and a blank line must never become a piece's
+    reported start or end - `lines 6-7` where line 7 is empty is a citation pointing past its own content
+    (LIVE READ 2026-10-20: 60 chunks of the live index ended on a blank line this way). So each piece
+    reports the first and last line it holds that actually has content.
+    """
     pieces: list[_Block] = []
     cur: list[str] = []
-    cur_start = last = block.start
+    content: list[int] = []  # the lines in `cur` that are not blank
+    fallback = block.start  # for a piece that is all blank: the last line with content before it
+
+    def flush() -> None:
+        nonlocal cur, content, fallback
+        start = content[0] if content else fallback
+        end = content[-1] if content else fallback
+        pieces.append(_Block(cur, start, end))
+        fallback = end
+        cur, content = [], []
+
     for offset, line in enumerate(block.lines):
         lineno = block.start + offset
         for seg in [line[k : k + max_chars] for k in range(0, len(line), max_chars)] or [""]:
             if cur and len("\n".join(cur + [seg])) > max_chars:
-                pieces.append(_Block(cur, cur_start, last))
-                cur = []
-            if not cur:
-                cur_start = lineno
+                flush()
             cur.append(seg)
-            last = lineno
+            if line.strip():
+                content.append(lineno)
     if cur:
-        pieces.append(_Block(cur, cur_start, last))
+        flush()
     return pieces
 
 

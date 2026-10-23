@@ -14,7 +14,7 @@ from memdex.config import ConfigError, glob_match, load_config
         ("STATUS.MD", "status*.md", True),
         ("Personal/Career/WEEKLY_TASKS/ARCHIVED/Week_01.md", "**/ARCHIVED/**", True),
         ("ARCHIVED/x.md", "**/ARCHIVED/**", True),
-        ("PROJECTS/main_RAG.md", "PROJECTS/*", True),
+        ("PROJECTS/MemDex_RAG.md", "PROJECTS/*", True),
         ("PROJECTS/a/b.md", "PROJECTS/*", False),
         (".claude/settings.md", ".claude/**", True),
     ],
@@ -38,6 +38,7 @@ def test_load_and_route(tmp_path):
 index_dir: .index
 sources:
   - path: docs
+    name: CLAUDE
     types: [md]
     exclude: ["_BACKUPS/**"]
     collections:
@@ -48,6 +49,8 @@ sources:
     )
     src = cfg.sources[0]
     assert cfg.index_dir == (tmp_path / ".index").resolve()
+    assert cfg.data_dir == (tmp_path / "data").resolve() and cfg.log_path == cfg.data_dir / "logs" / "queries.jsonl"
+    assert src.name == "CLAUDE" and src.kind == "config"
     assert src.wants("notes/a.MD")
     assert not src.wants("notes/a.txt")
     assert not src.wants("_BACKUPS/2026/STATUS.MD")
@@ -56,6 +59,26 @@ sources:
     assert src.collection_for("x/y.md") == "references"
 
 
+def test_source_name_defaults_to_folder_and_projects_are_appended(tmp_path):
+    (tmp_path / "data" / "sources" / "Travel").mkdir(parents=True)
+    (tmp_path / "data" / "sources" / ".hidden").mkdir()
+    cfg = load_config(_write(tmp_path, "sources:\n  - path: docs\n"))
+    assert [s.name for s in cfg.sources] == ["docs", "Travel"]
+    assert cfg.sources[1].kind == "project" and cfg.sources[1].default_collection == "docs"
+
+
 def test_missing_source_folder(tmp_path):
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, "sources:\n  - path: nope\n"))
+
+
+def test_explicit_missing_config_errors_but_default_missing_runs_on_defaults(tmp_path, monkeypatch):
+    with pytest.raises(ConfigError):
+        load_config(tmp_path / "nope.yaml")
+    monkeypatch.setenv("MEMDEX_CONFIG", str(tmp_path / "nope.yaml"))
+    with pytest.raises(ConfigError):
+        load_config()
+    monkeypatch.delenv("MEMDEX_CONFIG")
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config()
+    assert cfg.path is None and cfg.sources == () and cfg.index_dir == (tmp_path / ".index").resolve() and cfg.max_chars == 700

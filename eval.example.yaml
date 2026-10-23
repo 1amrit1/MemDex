@@ -1,0 +1,16 @@
+# MemDex retrieval eval set. Copy to data/eval/questions.yaml and write questions about YOUR docs.
+# `memdex eval` (or the UI's Eval tab) reports recall@k: how often the expected file/heading is in the top k.
+#
+# rel_path = path relative to its source folder (as shown in search results); heading = any substring of the
+# chunk's heading path (optional). Any one matching expectation counts as a hit.
+
+k: 5
+questions:
+  - q: what must happen before any write step
+    collection: rules                      # optional: same filters as `memdex search`
+    expect:
+      - { rel_path: CLAUDE.md, heading: "1.3" }
+      - { rel_path: CLAUDE.md, heading: "1.4" }
+  - q: when does the ferry leave
+    project: Travel                        # optional: limit to one project
+    expect: [trip.md]

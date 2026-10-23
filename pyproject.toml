@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memdex"
-version = "0.1.0"
-description = "Local, offline index over your docs (and later code): search and rules retrieval for Claude Code and local agents."
+version = "0.2.0"
+description = "Local, offline index over your docs (and later code): search and rules retrieval for Claude Code and local agents, with a local web UI."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -22,6 +22,9 @@ memdex = "memdex.cli:app"
 
 [tool.setuptools.packages.find]
 include = ["memdex*"]
+
+[tool.setuptools.package-data]
+memdex = ["ui/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

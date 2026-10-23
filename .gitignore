@@ -7,6 +7,11 @@ __pycache__/
 
 # local data - never committed
 .index/
+.index_backup*/
 models/
+data/
 memdex.yaml
 .env
+
+# machine-local Claude Code hook - never published
+.claude/settings.local.json
